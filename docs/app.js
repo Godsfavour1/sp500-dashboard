@@ -159,6 +159,7 @@ function show(s) {
   $("s-price").textContent = usd(s.price);
   $("s-mcap").textContent = money(s.market_cap);
   $("s-shares").textContent = count(s.shares);
+  renderTrend();
   document.title = `${s.ticker} · S&P 500 Factor Lens`;
 
   $("metrics").innerHTML = ORDER.map((k) => {
@@ -257,5 +258,139 @@ list.addEventListener("mousedown", (e) => {
 });
 q.addEventListener("blur", () => setTimeout(() => { list.hidden = true; }, 100));
 q.addEventListener("focus", () => { if (q.value) renderResults(); });
+
+// ---------- 12-month trend chart ----------
+const SVG_NS = "http://www.w3.org/2000/svg";
+const monthName = (m, withYear) => {
+  const [y, mo] = m.split("-").map(Number);
+  const d = new Date(Date.UTC(y, mo - 1, 15));
+  return d.toLocaleString("en-US", { month: "short", year: withYear ? "numeric" : undefined, timeZone: "UTC" });
+};
+const shortDay = (s) => new Date(s + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+const monthLabel = (p, withYear = true) => `${monthName(p.month, withYear)}${p.partial ? ` (to ${shortDay(p.through)})` : ""}`;
+
+function niceStep(raw) {
+  const exp = Math.pow(10, Math.floor(Math.log10(raw)));
+  const f = raw / exp;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * exp;
+}
+
+function el(name, attrs = {}, text) {
+  const e = document.createElementNS(SVG_NS, name);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function renderTrend() {
+  const panel = $("trend"), btn = $("trend-btn");
+  const data = (current && current.monthly) || [];
+  btn.hidden = data.length < 2;
+  if (data.length < 2) { panel.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+  if (panel.hidden) return;
+
+  // Summary
+  const first = data[0], last = data[data.length - 1];
+  const chg = last.avg / first.avg - 1;
+  $("trend-title").textContent = data.length >= 12 ? "Monthly average price, last 12 months" : `Monthly average price, last ${data.length} months`;
+  $("trend-summary").innerHTML =
+    `<strong class="${chg >= 0 ? "pos" : "neg"}">${signedPct(chg)}</strong>` +
+    `${monthName(first.month, true)} ${usd(first.avg)} → ${monthName(last.month, true)} ${usd(last.avg)}` +
+    (last.partial ? ` <span class="muted">(to ${shortDay(last.through)})</span>` : "");
+
+  // Geometry
+  const box = $("trend-chart");
+  box.innerHTML = "";
+  const W = Math.max(280, Math.round(box.clientWidth || 600));
+  const narrow = W < 520;
+  const H = narrow ? 220 : 260;
+  const m = { t: 22, r: 12, b: 28, l: 56 };
+  const pw = W - m.l - m.r, ph = H - m.t - m.b, n = data.length, band = pw / n;
+
+  const lo = Math.min(...data.map((d) => d.low ?? d.avg)), hi = Math.max(...data.map((d) => d.high ?? d.avg));
+  const step = niceStep((hi - lo || hi * 0.1) / 4);
+  const y0 = Math.floor(lo / step) * step, y1 = Math.ceil(hi / step) * step;
+  const x = (i) => m.l + band * (i + 0.5);
+  const y = (v) => m.t + ph - ((v - y0) / (y1 - y0)) * ph;
+  const dp = Number.isInteger(step) ? 0 : step * 10 === Math.round(step * 10) ? 1 : 2;
+  const tickFmt = (v) => `$${v.toLocaleString("en-US", { minimumFractionDigits: dp === 1 ? 2 : dp, maximumFractionDigits: dp === 1 ? 2 : dp })}`;
+
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img",
+    "aria-label": `Monthly average closing price of ${current.ticker}: ` + data.map((d) => `${monthLabel(d)} ${usd(d.avg)}`).join(", ") });
+
+  // Grid + y labels
+  for (let v = y0; v <= y1 + step / 2; v += step) {
+    svg.append(el("line", { class: "grid", x1: m.l, x2: W - m.r, y1: y(v), y2: y(v) }));
+    svg.append(el("text", { class: "axis-t", x: m.l - 8, y: y(v) + 4, "text-anchor": "end" }, tickFmt(v)));
+  }
+  // Monthly low-high ranges
+  data.forEach((d, i) => {
+    if (d.low != null && d.high != null) svg.append(el("line", { class: "range", x1: x(i), x2: x(i), y1: y(d.low), y2: y(d.high) }));
+  });
+  // Area + line
+  const pts = data.map((d, i) => `${x(i).toFixed(1)},${y(d.avg).toFixed(1)}`);
+  svg.append(el("path", { class: "area", d: `M${x(0)},${m.t + ph} L${pts.join(" L")} L${x(n - 1)},${m.t + ph} Z` }));
+  svg.append(el("path", { class: "line", d: `M${pts.join(" L")}` }));
+  // Dots
+  data.forEach((d, i) => {
+    const isLast = i === n - 1;
+    svg.append(el("circle", { class: `dot${isLast ? " last" : ""}${d.partial ? " partial" : ""}`, cx: x(i), cy: y(d.avg), r: isLast ? 5 : 3.5 }));
+  });
+  // End label
+  if (!narrow) {
+    svg.append(el("text", { class: "end-t", x: x(n - 1), y: y(last.high ?? last.avg) - 9, "text-anchor": "middle" }, usd(last.avg)));
+  }
+  // X labels (year shown on the first month and on January)
+  const every = band < 38 ? 2 : 1;
+  data.forEach((d, i) => {
+    if ((n - 1 - i) % every) return;
+    const [yr, mo] = d.month.split("-");
+    const label = i === 0 || mo === "01" ? `${monthName(d.month)} '${yr.slice(2)}` : monthName(d.month);
+    svg.append(el("text", { class: "axis-t", x: x(i), y: H - 8, "text-anchor": "middle" }, label));
+  });
+
+  // Hover / tap
+  const guide = el("line", { class: "guide", x1: 0, x2: 0, y1: m.t, y2: m.t + ph, visibility: "hidden" });
+  svg.append(guide);
+  svg.append(el("rect", { class: "hit", x: m.l, y: m.t, width: pw, height: ph }));
+  box.append(svg);
+  const tip = document.createElement("div");
+  tip.className = "tip";
+  tip.hidden = true;
+  box.append(tip);
+
+  const showTip = (ev) => {
+    const r = svg.getBoundingClientRect(), k = r.width / W;
+    const i = Math.max(0, Math.min(n - 1, Math.floor(((ev.clientX - r.left) / k - m.l) / band)));
+    const d = data[i];
+    guide.setAttribute("x1", x(i)); guide.setAttribute("x2", x(i)); guide.setAttribute("visibility", "visible");
+    tip.innerHTML = `<span class="tip-m">${esc(monthLabel(d))}</span><b>${usd(d.avg)}</b>` +
+      (d.low != null ? `Range ${usd(d.low)} – ${usd(d.high)}<br>` : "") + `${d.days} trading days`;
+    tip.hidden = false;
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = x(i) * k + 12;
+    if (left + tw > r.width) left = x(i) * k - tw - 12;
+    let top = y(d.avg) * k - th / 2;
+    top = Math.max(0, Math.min(top, r.height - th));
+    tip.style.left = `${Math.max(0, left)}px`;
+    tip.style.top = `${top}px`;
+  };
+  svg.addEventListener("pointermove", showTip);
+  svg.addEventListener("pointerdown", showTip);
+  svg.addEventListener("pointerleave", () => { tip.hidden = true; guide.setAttribute("visibility", "hidden"); });
+}
+
+$("trend-btn").addEventListener("click", () => {
+  const panel = $("trend");
+  panel.hidden = !panel.hidden;
+  $("trend-btn").setAttribute("aria-expanded", String(!panel.hidden));
+  renderTrend();
+});
+let resizeQueued = false;
+window.addEventListener("resize", () => {
+  if (resizeQueued || $("trend").hidden) return;
+  resizeQueued = true;
+  requestAnimationFrame(() => { resizeQueued = false; renderTrend(); });
+});
 
 load();

@@ -1,6 +1,6 @@
 # S&P 500 Factor Lens
 
-A static dashboard showing six metrics for every S&P 500 stock: earnings yield, FCF yield, book-to-market, ROE, debt-to-equity and 12-1 month momentum. Pick a stock, click a metric, and see its definition, formula and the worked calculation.
+A static dashboard showing six metrics for every S&P 500 stock: earnings yield, FCF yield, book-to-market, ROE, debt-to-equity and 12-1 month momentum. Pick a stock, click a metric, and see its definition, formula and the worked calculation. The **12-mo trend** button next to the closing price shows a chart of the stock's monthly average price over the last 12 months.
 
 - `scripts/fetch_data.py` collects constituents (Wikipedia), prices and financial statements (Yahoo Finance via `yfinance`), computes the metrics and writes `docs/data/metrics.json`.
 - `docs/` is the website (plain HTML/CSS/JS), served by GitHub Pages.
@@ -57,7 +57,7 @@ Your link will be `https://<you>.github.io/sp500-dashboard/`. A single stock can
 | Debt-to-equity | total debt ÷ shareholders' equity |
 | Momentum (12-1) | price 21 trading days ago ÷ price 252 trading days ago − 1 |
 
-Market cap = latest official close × shares outstanding. TTM = sum of the last four reported quarters (falls back to the last fiscal year). Stocks with negative equity show n/a for book-to-market-based ratios that aren't meaningful.
+Market cap = latest official close × shares outstanding. Momentum uses dividend-adjusted prices (total return); the price shown, market cap and the monthly-average chart use actual closing prices. TTM = sum of the last four reported quarters (falls back to the last fiscal year). Stocks with negative equity show n/a for book-to-market-based ratios that aren't meaningful.
 
 ## Fundamentals cache
 

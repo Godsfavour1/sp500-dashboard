@@ -40,11 +40,28 @@
           <span class="sector" id="s-sector"></span>
         </div>
         <dl class="stock-facts">
-          <div><dt>Close</dt><dd id="s-price"></dd></div>
+          <div><dt>Close</dt><dd class="close-dd"><span id="s-price"></span>
+            <button type="button" id="trend-btn" class="trend-btn" aria-expanded="false" aria-controls="trend" title="Show monthly average price for the last 12 months">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 20h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M5 15l4-5 4 3 6-7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>12-mo trend</span>
+            </button>
+          </dd></div>
           <div><dt>Market cap</dt><dd id="s-mcap"></dd></div>
           <div><dt>Shares</dt><dd id="s-shares"></dd></div>
         </dl>
       </div>
+
+      <section id="trend" class="trend" aria-labelledby="trend-title" hidden>
+        <div class="trend-head">
+          <div>
+            <h3 id="trend-title">Monthly average price</h3>
+            <p class="trend-sub">Average of the daily closing prices in each month</p>
+          </div>
+          <p class="trend-summary" id="trend-summary"></p>
+        </div>
+        <div class="trend-chart" id="trend-chart"></div>
+        <p class="trend-legend"><span class="lg-item"><span class="lg-line"></span>Monthly average</span><span class="lg-item"><span class="lg-range"></span>Lowest to highest close that month</span></p>
+      </section>
 
       <p class="hint">Choose a metric to see what it means and how it was calculated for this stock.</p>
       <div class="metrics" id="metrics" role="tablist" aria-label="Metrics"></div>

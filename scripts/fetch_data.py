@@ -58,11 +58,18 @@ def get_constituents() -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------- prices
-def get_prices(tickers: list[str]) -> pd.DataFrame:
-    data = yf.download(tickers, period="14mo", interval="1d", auto_adjust=True,
+def get_prices(tickers: list[str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Return (close, adj_close) daily frames, one column per ticker.
+
+    close     = actual traded close (split-adjusted only). Used for the price
+                shown, market cap and the monthly-average chart.
+    adj_close = also adjusted for dividends. Used for momentum (total return).
+    """
+    data = yf.download(tickers, period="14mo", interval="1d", auto_adjust=False,
                        progress=False, threads=True, group_by="column")
-    close = data["Close"] if isinstance(data.columns, pd.MultiIndex) else data[["Close"]]
-    close = close.sort_index().dropna(axis=1, how="all")
+    multi = isinstance(data.columns, pd.MultiIndex)
+    close = (data["Close"] if multi else data[["Close"]]).sort_index().dropna(axis=1, how="all")
+    adj = (data["Adj Close"] if multi else data[["Adj Close"]]).sort_index().reindex(columns=close.columns)
     if close.shape[1] < len(tickers) * 0.5:
         raise SystemExit(f"Price download failed for most tickers ({close.shape[1]}/{len(tickers)} ok). "
                          "Yahoo is probably rate-limiting this machine; try again later.")
@@ -71,10 +78,11 @@ def get_prices(tickers: list[str]) -> pd.DataFrame:
     for t in missing:
         for attempt in range(3):
             try:
-                h = yf.Ticker(t).history(period="14mo", interval="1d", auto_adjust=True)["Close"]
+                h = yf.Ticker(t).history(period="14mo", interval="1d", auto_adjust=False)
                 if len(h):
                     h.index = h.index.tz_localize(None).normalize()
-                    close[t] = h.reindex(close.index)
+                    close[t] = h["Close"].reindex(close.index)
+                    adj[t] = h["Adj Close"].reindex(close.index)
                     break
             except Exception:
                 pass
@@ -83,8 +91,29 @@ def get_prices(tickers: list[str]) -> pd.DataFrame:
     now_ny = datetime.now(NY)
     last = close.index[-1].date()
     if last == now_ny.date() and (now_ny.hour, now_ny.minute) < (16, 30):
-        close = close.iloc[:-1]
-    return close
+        close, adj = close.iloc[:-1], adj.iloc[:-1]
+    return close, adj
+
+
+def monthly_averages(s: pd.Series, months: int = 12) -> list[dict]:
+    """Average daily close per calendar month for the last `months` months.
+
+    The latest month is flagged partial when trading days remain in it.
+    """
+    s = s.dropna()
+    if s.empty:
+        return []
+    g = s.groupby(s.index.to_period("M"))
+    avg, days = g.mean(), g.size()
+    lo, hi = g.min(), g.max()
+    out = [{"month": str(p), "avg": round(float(avg[p]), 2), "days": int(days[p]),
+            "low": round(float(lo[p]), 2), "high": round(float(hi[p]), 2)} for p in avg.index[-months:]]
+    last_date = s.index[-1]
+    next_bday = last_date + pd.offsets.BDay(1)
+    if next_bday.to_period("M") == last_date.to_period("M"):
+        out[-1]["partial"] = True
+        out[-1]["through"] = str(last_date.date())
+    return out
 
 
 # ---------------------------------------------------------------- fundamentals
@@ -198,12 +227,16 @@ def ratio(a, b):
     return a / b
 
 
-def build_record(row, closes: pd.Series, f: dict) -> dict:
+def build_record(row, closes: pd.Series, adj_closes: pd.Series, f: dict) -> dict:
     notes = []
-    s = closes.dropna()
-    price = float(s.iloc[-1]) if len(s) else None
-    price_date = str(s.index[-1].date()) if len(s) else None
+    c = closes.dropna()
+    price = float(c.iloc[-1]) if len(c) else None
+    price_date = str(c.index[-1].date()) if len(c) else None
 
+    # Momentum uses dividend-adjusted prices (total return); fall back to raw.
+    s = adj_closes.dropna()
+    if len(s) < len(c):
+        s = c
     mom = None
     mom_inputs = None
     if len(s) > LOOKBACK_DAYS:
@@ -245,6 +278,7 @@ def build_record(row, closes: pd.Series, f: dict) -> dict:
             "momentum": mom_inputs,
         },
         "metrics": metrics,
+        "monthly": monthly_averages(closes),
         "notes": notes,
     }
 
@@ -302,7 +336,7 @@ def main(limit: int | None = None) -> int:
     tickers = cons["yahoo"].tolist()
     print(f"{len(tickers)} constituents")
 
-    closes = get_prices(tickers)
+    closes, adj_closes = get_prices(tickers)
     as_of = str(closes.index[-1].date())
     print(f"prices to {as_of}")
 
@@ -352,7 +386,7 @@ def main(limit: int | None = None) -> int:
     stocks, stale, dropped = [], [], []
     for row in cons.itertuples(index=False):
         if row.yahoo in fund and row.yahoo in closes.columns:
-            stocks.append(build_record(row, closes[row.yahoo], fund[row.yahoo]))
+            stocks.append(build_record(row, closes[row.yahoo], adj_closes[row.yahoo], fund[row.yahoo]))
         elif row.symbol in previous:
             old = previous[row.symbol]
             note = f"Today's price could not be downloaded, so these figures use the close on {old.get('price_date')}."
