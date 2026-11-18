@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>S&amp;P 500 Factor Lens</title>
+  <meta name="description" content="Earnings yield, FCF yield, book-to-market, ROE, debt-to-equity and momentum for every S&amp;P 500 stock.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;600&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap top-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 18 L9 11 L13 14 L21 5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="21" cy="5" r="2" fill="currentColor"/></svg>
+        </span>
+        <div>
+          <h1>S&amp;P 500 Factor Lens</h1>
+          <p class="asof" id="asof">Loading data…</p>
+        </div>
+      </div>
+      <div class="search" role="combobox" aria-haspopup="listbox" aria-owns="results" aria-expanded="false" id="search-box">
+        <label for="q" class="sr-only">Find a stock</label>
+        <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M20 20l-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Search ticker or company (e.g. AAPL, Nvidia)" aria-autocomplete="list" aria-controls="results">
+        <ul id="results" role="listbox" hidden></ul>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="stock" class="stock" hidden>
+      <div class="stock-head">
+        <div class="stock-id">
+          <span class="ticker" id="s-ticker"></span>
+          <h2 id="s-name"></h2>
+          <span class="sector" id="s-sector"></span>
+        </div>
+        <dl class="stock-facts">
+          <div><dt>Close</dt><dd id="s-price"></dd></div>
+          <div><dt>Market cap</dt><dd id="s-mcap"></dd></div>
+          <div><dt>Shares</dt><dd id="s-shares"></dd></div>
+        </dl>
+      </div>
+
+      <p class="hint">Choose a metric to see what it means and how it was calculated for this stock.</p>
+      <div class="metrics" id="metrics" role="tablist" aria-label="Metrics"></div>
+
+      <article class="detail" id="detail" role="tabpanel" aria-live="polite"></article>
+      <ul class="notes" id="notes"></ul>
+    </section>
+
+    <section id="error" class="error" hidden></section>
+  </main>
+
+  <footer class="wrap foot">
+    <p id="source"></p>
+    <p>For education only. Not investment advice.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
